@@ -1,3 +1,8 @@
+###############################################################################
+# Download model weights from this link:                                      #
+# https://www.cs.toronto.edu/~frossard/vgg16/vgg16_weights.npz                #
+###############################################################################
+
 
 import tensorflow as tf
 import numpy as np
@@ -205,11 +210,10 @@ class vgg16:
         # fc1
         with tf.name_scope('fc1') as scope:
             shape = int(np.prod(self.pool5.get_shape()[1:]))
-            fc1w = tf.Variable(tf.truncated_normal([shape, 4096],
-                                                         dtype=tf.float32,
-                                                         stddev=1e-1), name='weights')
+            fc1w = tf.get_variable(initializer=tf.contrib.layers.xavier_initializer(), 
+                                   shape = [shape, 4096], name='fc1w')            
             fc1b = tf.Variable(tf.constant(1.0, shape=[4096], dtype=tf.float32),
-                                 trainable=True, name='biases')
+                                 trainable=True, name='fc1b')
             pool5_flat = tf.reshape(self.pool5, [-1, shape])
             fc1l = tf.nn.bias_add(tf.matmul(pool5_flat, fc1w), fc1b)
             relu1 = tf.nn.relu(fc1l, name='fc1_relu')
@@ -219,11 +223,10 @@ class vgg16:
 
         # fc2
         with tf.name_scope('fc2') as scope:
-            fc2w = tf.Variable(tf.truncated_normal([4096, 4096],
-                                                         dtype=tf.float32,
-                                                         stddev=1e-1), name='weights')
+            fc2w = tf.get_variable(initializer=tf.contrib.layers.xavier_initializer(), 
+                                   shape = [4096, 4096], name='fc2w')
             fc2b = tf.Variable(tf.constant(1.0, shape=[4096], dtype=tf.float32),
-                                 trainable=True, name='biases')
+                                 trainable=True, name='fc2b')
             fc2l = tf.nn.bias_add(tf.matmul(self.fc1, fc2w), fc2b)
             relu2 = tf.nn.relu(fc2l, name='fc2_relu')
             dropout2 = tf.nn.dropout(relu2, keep_prob, name='fc2_dropout')
@@ -232,11 +235,10 @@ class vgg16:
 
         # fc3
         with tf.name_scope('fc3') as scope:
-            fc3w = tf.Variable(tf.truncated_normal([4096, 1000],
-                                                         dtype=tf.float32,
-                                                         stddev=1e-1), name='weights')
+            fc3w = tf.get_variable(initializer=tf.contrib.layers.xavier_initializer(), 
+                                   shape = [4096, 1000], name='fc3w')
             fc3b = tf.Variable(tf.constant(1.0, shape=[1000], dtype=tf.float32),
-                                 trainable=True, name='biases')
+                                 trainable=True, name='fc3b')
             self.fc3l = tf.nn.bias_add(tf.matmul(self.fc2, fc3w), fc3b)
             self.parameters += [fc3w, fc3b]
 
@@ -244,6 +246,7 @@ class vgg16:
         weights = np.load(weight_file)
         keys = sorted(weights.keys())
         for i, k in enumerate(keys):
+#            if not k[:2] == 'fc': # if we want to train our own fc weights
             print i, k, np.shape(weights[k])
             sess.run(self.parameters[i].assign(weights[k]))
 
