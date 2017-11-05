@@ -6,10 +6,10 @@ from scipy.misc import imread, imresize
 
 
 class vgg16:
-    def __init__(self, imgs, weights=None, sess=None):
+    def __init__(self, imgs, weights=None, sess=None, keep_prob=1.0):
         self.imgs = imgs
         self.convlayers()
-        self.fc_layers()
+        self.fc_layers(keep_prob)
         self.probs = tf.nn.softmax(self.fc3l)
         if weights is not None and sess is not None:
             self.load_weights(weights, sess)
@@ -201,7 +201,7 @@ class vgg16:
                                padding='SAME',
                                name='pool4')
 
-    def fc_layers(self):
+    def fc_layers(self, keep_prob):
         # fc1
         with tf.name_scope('fc1') as scope:
             shape = int(np.prod(self.pool5.get_shape()[1:]))
@@ -212,7 +212,9 @@ class vgg16:
                                  trainable=True, name='biases')
             pool5_flat = tf.reshape(self.pool5, [-1, shape])
             fc1l = tf.nn.bias_add(tf.matmul(pool5_flat, fc1w), fc1b)
-            self.fc1 = tf.nn.relu(fc1l)
+            relu1 = tf.nn.relu(fc1l, name='fc1_relu')
+            dropout1 = tf.nn.dropout(relu1, keep_prob, name='fc1_dropout')
+            self.fc1 = dropout1
             self.parameters += [fc1w, fc1b]
 
         # fc2
@@ -223,7 +225,9 @@ class vgg16:
             fc2b = tf.Variable(tf.constant(1.0, shape=[4096], dtype=tf.float32),
                                  trainable=True, name='biases')
             fc2l = tf.nn.bias_add(tf.matmul(self.fc1, fc2w), fc2b)
-            self.fc2 = tf.nn.relu(fc2l)
+            relu2 = tf.nn.relu(fc2l, name='fc2_relu')
+            dropout2 = tf.nn.dropout(relu2, keep_prob, name='fc2_dropout')
+            self.fc2 = dropout2
             self.parameters += [fc2w, fc2b]
 
         # fc3
@@ -243,15 +247,16 @@ class vgg16:
             print i, k, np.shape(weights[k])
             sess.run(self.parameters[i].assign(weights[k]))
 
+
 if __name__ == '__main__':
     sess = tf.Session()
     imgs = tf.placeholder(tf.float32, [None, 224, 224, 3])
-    vgg = vgg16(imgs, '/Users/anders1991/Desktop/vgg16_weights.npz', sess)
+    vgg = vgg16(imgs, '/Users/anders1991/Desktop/vgg16_weights.npz', sess, keep_prob=1.0)
 
 #    img1 = imread('laska.png', mode='RGB')
 #    img1 = imresize(img1, (224, 224))
 
-    prob = sess.run(vgg.probs, feed_dict={vgg.imgs: [img1]})[0]
-    preds = (np.argsort(prob)[::-1])[0:5]
+#    prob = sess.run(vgg.probs, feed_dict={vgg.imgs: [img1]})[0]
+#    preds = (np.argsort(prob)[::-1])[0:5]
 #    for p in preds:
 #        print class_names[p], prob[p]
