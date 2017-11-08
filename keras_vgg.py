@@ -253,58 +253,58 @@ class TestOnBest(Callback):
             self.history['test_loss'].append(float('nan'))
             self.history['test_acc'].append(float('nan'))       
             
-            
+if __name__ == '__main__':           
 
-# Read in all the data
-subjects_list = get_subjects_list()
-
-# Build model, save initial weights (TODO: Save/load only trainable weights?)
-model = build_model(init_seed)
-# print summary
-model.summary()
-# save initial weights
-Winit = model.get_weights()
-
-
-loo=LeaveOneOut()
-fold=1
-for idx_tmp, idx_test in loo.split(range(num_subjects)):
+    # Read in all the data
+    subjects_list = get_subjects_list()
     
-    print("Fold num %d\tSubject id %d" %(fold, idx_test+1))
-    #f = open('outputs/sleep5_fold'+str(fold), 'w').close()
+    # Build model, save initial weights (TODO: Save/load only trainable weights?)
+    model = build_model(init_seed)
+    # print summary
+    model.summary()
+    # save initial weights
+    Winit = model.get_weights()
     
-    # reset weights to initial (common initialization for all folds)
-    model.set_weights(Winit)
     
-    # Get training, validation, test set
-    inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test = split_dataset(subjects_list, idx_tmp, idx_test)
-
-    # Get class weights for the current training set
-    class_weights = get_class_weights(targets_train)     
+    loo=LeaveOneOut()
+    fold=1
+    for idx_tmp, idx_test in loo.split(range(num_subjects)):
+        
+        print("Fold num %d\tSubject id %d" %(fold, idx_test+1))
+        #f = open('outputs/sleep5_fold'+str(fold), 'w').close()
+        
+        # reset weights to initial (common initialization for all folds)
+        model.set_weights(Winit)
+        
+        # Get training, validation, test set
+        inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test = split_dataset(subjects_list, idx_tmp, idx_test)
     
-    # Call testing history callback
-    test_history = TestOnBest((inputs_test, targets_test))
-    # Run training
-    history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights, validation_data=(inputs_val, targets_val), 
-                     callbacks=[test_history], verbose=2) 
+        # Get class weights for the current training set
+        class_weights = get_class_weights(targets_train)     
+        
+        # Call testing history callback
+        test_history = TestOnBest((inputs_test, targets_test))
+        # Run training
+        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights, validation_data=(inputs_val, targets_val), 
+                         callbacks=[test_history], verbose=2) 
+        
+        # Retreive test set statistics and merge to training statistics log
+        history.history.update(test_history.history)
     
-    # Retreive test set statistics and merge to training statistics log
-    history.history.update(test_history.history)
-
-    # Save training history
-    fn = '../outputs/train_hist_fold'+str(fold)+'.pickle'
-    pickle_out = open(fn,'wb')
-    pickle.dump(history.history, pickle_out)
-    pickle_out.close()
-    
-    # Save weights after training is finished
-    fn = '../outputs/weights_fold'+str(fold)+'.hdf5'
-    model.save_weights(fn)
-    
-    # Plot loss and accuracy by epoch
-    plot_training_history(history, fold)
-                
-    fold+=1  
+        # Save training history
+        fn = '../outputs/train_hist_fold'+str(fold)+'.pickle'
+        pickle_out = open(fn,'wb')
+        pickle.dump(history.history, pickle_out)
+        pickle_out.close()
+        
+        # Save weights after training is finished
+        fn = '../outputs/weights_fold'+str(fold)+'.hdf5'
+        model.save_weights(fn)
+        
+        # Plot loss and accuracy by epoch
+        plot_training_history(history, fold)
+                    
+        fold+=1  
     
     
     
