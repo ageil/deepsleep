@@ -109,9 +109,6 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
         lcrn.add(layer)
     # load VGG16 imagenet weights
     lcrn.load_weights(weights_path_no_top) # only base layers
-    # freeze VGG16 weights
-    for layer in lcrn.layers:
-        layer.trainable = False
     # add cnn classification layers
     if cnn_softmax: # include softmax
         for layer in cnn_top.layers:
