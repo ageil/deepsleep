@@ -68,7 +68,16 @@ def build_model(init_seed=None):
     cnn.add(TimeDistributed(Conv2D(512, (3, 3), activation='relu', padding='same'), name='block5_tdist_conv3')) # 14x14x512
     cnn.add(TimeDistributed(MaxPooling2D((2, 2), strides=(2, 2)), name='block5_tdist_pool')) # 7x7x512
 
-    
+
+    # OPTIONAL: Classification block
+    xavier = initializers.glorot_normal(seed=init_seed)
+    cnn_top = Sequential()
+    cnn_top.add(TimeDistributed(Flatten(), input_shape=cnn.output_shape[1:], name="block6_tdist_flatten"))
+    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier), name="block6_tdist_dense1"))
+    cnn_top.add(TimeDistributed(Dropout(rate=0.5), name="block6_tdist_dropout1"))
+    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier), name="block6_tdist_dense2"))
+    cnn_top.add(TimeDistributed(Dropout(rate=0.5), name="block6_tdist_dropout2"))
+    cnn_top.add(TimeDistributed(Dense(num_classes, activation='softmax', kernel_initializer=xavier), name="block6_tdist_softmax"))
 
 
     # LCRN
@@ -93,6 +102,9 @@ def build_model(init_seed=None):
     # freeze VGG16 weights
     for layer in lcrn.layers:
         layer.trainable = False
+    # add VGG 16 classification layers
+    for layer in cnn_top.layers:
+        lcrn.add(layer)
 
 
     # COMPILE THE MODEL
