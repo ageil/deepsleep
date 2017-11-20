@@ -94,7 +94,7 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
     rnn.add(Dropout(rate=droprate, name="block7_dropout1")) # timesteps x (2x32)
     rnn.add(Bidirectional(LSTM(64, return_sequences=True), name="block7_bidir_lstm2")) # timesteps x (2x64)
     rnn.add(Dropout(rate=droprate, name="block7_dropout2")) # timesteps x (2x64)
-    rnn.add(LSTM(num_classes, return_sequences=False, name="block7_lstm3")) # 1 x num_classes
+    rnn.add(LSTM(num_classes, activation='softmax', return_sequences=False, name="block7_lstm3")) # 1 x num_classes
 
     # alternative classification using FC layers
 #    rnn.add(LSTM(128, return_sequences=True, name="block7_bidir_lstm3")) # timesteps x 128
