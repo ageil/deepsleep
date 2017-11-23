@@ -11,7 +11,7 @@ layers, with dense layers on top.
 
 import keras.initializers as initializers
 from keras.applications.vgg16 import VGG16
-from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Dense, Dropout, Flatten, LSTM
 from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.utils import to_categorical
@@ -34,8 +34,10 @@ num_classes = 5
 num_subjects = 10
 # Number of units in dense layers
 num_dense = 4096
+# Number of units in LSTM layers
+num_lstm = 128
 # Name of sensor used
-sensors='fpz'
+sensors = 'fpz'
 # Path to spectrograms
 impath = '../imdata/'
 init_seed = 3
@@ -45,7 +47,7 @@ batch_size = 75
 
 
 def build_model(init_seed=None):
-    # CONVOLUTIONAL LAYERS: use the weights from ImageNet
+    # CONVOLUTIONAL LAYERS: use the pretrained weights from ImageNet
     base_model = VGG16(weights='imagenet', input_shape=(224, 224, 3), include_top=False)
     
     # TOP LAYERS: Trainable dense layers with random initialization
@@ -63,7 +65,17 @@ def build_model(init_seed=None):
     # Softmax
     dense_model.add(Dense(num_classes, activation='softmax', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
     
-    
+    # RNN LAYERS
+    rnn_model = Sequential()
+    # Input layer
+    rnn_model.add(Flatten(input_shape=dense_model.output_shape[1:]))
+    # LSTM1
+    rnn_model.add(LSTM(num_lstm, activate='relu'))
+    # LSTM2
+    rnn_model.add(LSTM(num_lstm, activate='relu'))
+    # Softmax
+    dense_model.add(Dense(num_classes, activation='softmax'))
+
     # CREATE THE FULL MODEL (stack the dense layers on the convolutional layers)
     model = Sequential()
     # Add convolutional layers
@@ -75,6 +87,9 @@ def build_model(init_seed=None):
     # Add fully conncected layers
     for layer in dense_model.layers:
         model.add(layer)
+    # Add LSTM layers
+    for layer in rnn_model.layers:
+        model.add(layer)
     
     
     # COMPILE THE MODEL
@@ -84,7 +99,8 @@ def build_model(init_seed=None):
                   optimizer=adam,
                   metrics=['accuracy'])
 
-    return model   
+    return model
+
 
 # LOAD SPECTROGRAMS (copy-pasted from Albert)
 def load_spectrograms(subject_id, night_id):
@@ -118,8 +134,8 @@ def load_spectrograms(subject_id, night_id):
                
         inputs[idx-1,:,:,:]=rawim
     
-    
     return inputs, targets
+
 
 def get_subjects_list():
     subjects_list = []
@@ -137,6 +153,7 @@ def get_subjects_list():
         subjects_list.append([current_inputs,current_targets])
     
     return subjects_list
+
 
 # Split the dataset into training, validation and test set
 def split_dataset(subjects_list, idx_tmp, idx_test): 
@@ -199,6 +216,7 @@ def get_class_weights(targets_train):
     
     return class_weights
 
+
 # Function that plots training and validation error/accuracy
 def plot_training_history(history, fold, plotpath, show=False):
                 
@@ -255,6 +273,7 @@ class TestOnBest(Callback):
         else:
             self.history['test_loss'].append(float('nan'))
             self.history['test_acc'].append(float('nan'))       
+
             
 if __name__ == '__main__':    
 
@@ -265,6 +284,7 @@ if __name__ == '__main__':
     outpath = '../outputs'
     if not os.path.exists(outpath):
             os.makedirs(outpath)
+
 
     # Read in all the data
     subjects_list = get_subjects_list()
@@ -288,7 +308,8 @@ if __name__ == '__main__':
         model.set_weights(Winit)
         
         # Get training, validation, test set
-        inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test = split_dataset(subjects_list, idx_tmp, idx_test)
+        inputs_train, targets_train, inputs_val, 
+        targets_val, inputs_test, targets_test = split_dataset(subjects_list, idx_tmp, idx_test)
     
         # Get class weights for the current training set
         class_weights = get_class_weights(targets_train)     
@@ -296,8 +317,8 @@ if __name__ == '__main__':
         # Call testing history callback
         test_history = TestOnBest((inputs_test, targets_test))
         # Run training
-        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights, validation_data=(inputs_val, targets_val), 
-                         callbacks=[test_history], verbose=2) 
+        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights,
+        validation_data = (inputs_val, targets_val), callbacks=[test_history], verbose=2)
         
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
@@ -318,15 +339,6 @@ if __name__ == '__main__':
         fold+=1  
     
     
-    
     # Clear session
     K.clear_session()
-    
-    
-    
-    
-    
-    
-    
-    
     
