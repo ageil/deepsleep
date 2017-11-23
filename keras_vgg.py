@@ -16,7 +16,9 @@ from keras.models import Sequential
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 from keras.callbacks import Callback
+from keras import backend as K
 
+import os
 import pickle
 import matplotlib.pyplot as plt
 import random
@@ -198,7 +200,8 @@ def get_class_weights(targets_train):
     return class_weights
 
 # Function that plots training and validation error/accuracy
-def plot_training_history(history, fold, show=False):
+def plot_training_history(history, fold, plotpath, show=False):
+                
         # summarize history for accuracy
         plt.plot(history.history['acc'])
         plt.plot(history.history['val_acc'])
@@ -206,7 +209,7 @@ def plot_training_history(history, fold, show=False):
         plt.ylabel('accuracy')
         plt.xlabel('epoch')
         plt.legend(['train', 'val'], loc='upper left')
-        filename = '../plots/fold' + str(fold) + '_acc.png'
+        filename = plotpath+'/fold' + str(fold) + '_acc.png'
         plt.savefig(filename, dpi=72)
         if show:
             plt.show()
@@ -219,7 +222,7 @@ def plot_training_history(history, fold, show=False):
         plt.ylabel('loss')
         plt.xlabel('epoch')
         plt.legend(['train', 'val'], loc='upper left')
-        filename = '../plots/fold' + str(fold) + '_loss.png'
+        filename = plotpath+'/fold' + str(fold) + '_loss.png'
         plt.savefig(filename, dpi=72)
         if show:
             plt.show()
@@ -253,7 +256,15 @@ class TestOnBest(Callback):
             self.history['test_loss'].append(float('nan'))
             self.history['test_acc'].append(float('nan'))       
             
-if __name__ == '__main__':           
+if __name__ == '__main__':    
+
+    # Make sure output paths are in place
+    plotpath = '../plots'
+    if not os.path.exists(plotpath):
+            os.makedirs(plotpath)   
+    outpath = '../outputs'
+    if not os.path.exists(outpath):
+            os.makedirs(outpath)
 
     # Read in all the data
     subjects_list = get_subjects_list()
@@ -291,26 +302,25 @@ if __name__ == '__main__':
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
     
-        # Save training history
-        fn = '../outputs/train_hist_fold'+str(fold)+'.pickle'
+        # Save training history        
+        fn = outpath+'/train_hist_fold'+str(fold)+'.pickle'
         pickle_out = open(fn,'wb')
         pickle.dump(history.history, pickle_out)
         pickle_out.close()
         
         # Save weights after training is finished
-        fn = '../outputs/weights_fold'+str(fold)+'.hdf5'
+        fn = outpath+'/weights_fold'+str(fold)+'.hdf5'
         model.save_weights(fn)
         
         # Plot loss and accuracy by epoch
-        plot_training_history(history, fold)
+        plot_training_history(history, fold, plotpath)
                     
         fold+=1  
     
     
     
-    
-    
-    
+    # Clear session
+    K.clear_session()
     
     
     
