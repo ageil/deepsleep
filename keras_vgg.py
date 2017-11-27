@@ -91,8 +91,6 @@ def build_model(init_seed=None):
 # LOAD SPECTROGRAMS (copy-pasted from Albert)
 def load_spectrograms(subject_id, night_id):
     labels = np.loadtxt(impath +'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/labels.txt',dtype=bytes).astype(str)
-    print(type(labels[0]))
-    print(labels[0])
     num_images = np.size(labels)
     
     targets = np.zeros((num_images), dtype='int')
