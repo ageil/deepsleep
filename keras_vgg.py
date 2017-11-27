@@ -31,7 +31,7 @@ from sklearn.model_selection import LeaveOneOut
 # Number of output classes
 num_classes = 5
 # Number of subjects
-num_subjects = 10
+num_subjects = 15
 # Number of units in dense layers
 num_dense = 4096
 # Number of units in LSTM layers
@@ -64,17 +64,6 @@ def build_model(init_seed=None):
     dense_model.add(Dropout(rate=0.5))
     # Softmax
     dense_model.add(Dense(num_classes, activation='softmax', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
-    
-    # RNN LAYERS
-    rnn_model = Sequential()
-    # Input layer
-    rnn_model.add(Flatten(input_shape=dense_model.output_shape[1:]))
-    # LSTM1
-    rnn_model.add(LSTM(num_lstm, activate='relu'))
-    # LSTM2
-    rnn_model.add(LSTM(num_lstm, activate='relu'))
-    # Softmax
-    dense_model.add(Dense(num_classes, activation='softmax'))
 
     # CREATE THE FULL MODEL (stack the dense layers on the convolutional layers)
     model = Sequential()
@@ -86,9 +75,6 @@ def build_model(init_seed=None):
         layer.trainable = False
     # Add fully conncected layers
     for layer in dense_model.layers:
-        model.add(layer)
-    # Add LSTM layers
-    for layer in rnn_model.layers:
         model.add(layer)
     
     
@@ -104,7 +90,9 @@ def build_model(init_seed=None):
 
 # LOAD SPECTROGRAMS (copy-pasted from Albert)
 def load_spectrograms(subject_id, night_id):
-    labels = np.loadtxt(impath +'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/labels.txt',dtype='str')
+    labels = np.loadtxt(impath +'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/labels.txt',dtype=bytes).astype(str)
+    print(type(labels[0]))
+    print(labels[0])
     num_images = np.size(labels)
     
     targets = np.zeros((num_images), dtype='int')
@@ -145,7 +133,7 @@ def get_subjects_list():
         if(i!=20):
             inputs_night2, targets_night2  = load_spectrograms(i,2)
         else:
-            inputs_night2 = np.empty((0,3,224,224),dtype='uint8')
+            inputs_night2 = np.empty((0,224,224,3),dtype='uint8')
             targets_night2 = np.empty((0,),dtype='uint8')           
         
         current_inputs = np.concatenate((inputs_night1,inputs_night2),axis=0)
@@ -203,6 +191,7 @@ def split_dataset(subjects_list, idx_tmp, idx_test):
 def get_class_weights(targets_train):
     
     n_samples = np.sum(targets_train, axis=0)
+    print(n_samples)
     n_total = np.sum(n_samples)
     #
     w = [n_total/n_class for n_class in n_samples]
@@ -260,17 +249,21 @@ class TestOnBest(Callback):
 
     # At the end of epoch, check if validation loss is the best so far    
     def on_epoch_end(self, batch, logs={}):
-        self.current_loss = logs.get('val_loss')
-        # If validation error is lowest, compute test error and store in dict
-        if (self.current_loss < self.best_loss):
-            self.best_loss = self.current_loss
-            x, y = self.test_data
-            loss, acc = self.model.evaluate(x, y, verbose=0)
-            self.history['test_loss'].append(loss)
-            self.history['test_acc'].append(acc)
-            print('\nTesting loss: {}, acc: {}\n'.format(loss, acc))
-        # Else store NaNs (to keep correct epoch indexing)
-        else:
+        try:
+            self.current_loss = logs.get('val_loss')
+            # If validation error is lowest, compute test error and store in dict
+            if (self.current_loss < self.best_loss):
+                self.best_loss = self.current_loss
+                x, y = self.test_data
+                loss, acc = self.model.evaluate(x, y, verbose=0)
+                self.history['test_loss'].append(loss)
+                self.history['test_acc'].append(acc)
+                print('\nTesting loss: {}, acc: {}\n'.format(loss, acc))
+            # Else store NaNs (to keep correct epoch indexing)
+            else:
+                self.history['test_loss'].append(float('nan'))
+                self.history['test_acc'].append(float('nan'))
+        except:
             self.history['test_loss'].append(float('nan'))
             self.history['test_acc'].append(float('nan'))       
 
@@ -308,8 +301,7 @@ if __name__ == '__main__':
         model.set_weights(Winit)
         
         # Get training, validation, test set
-        inputs_train, targets_train, inputs_val, 
-        targets_val, inputs_test, targets_test = split_dataset(subjects_list, idx_tmp, idx_test)
+        inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test = split_dataset(subjects_list, idx_tmp, idx_test)
     
         # Get class weights for the current training set
         class_weights = get_class_weights(targets_train)     
