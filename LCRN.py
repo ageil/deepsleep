@@ -16,6 +16,7 @@ from keras.utils.data_utils import get_file
 import pickle
 import matplotlib.pyplot as plt
 import random
+import os
 import numpy as np
 from skimage import io
 import skimage.transform
@@ -25,12 +26,20 @@ from sklearn.model_selection import LeaveOneOut
 # Number of output classes
 num_classes = 5
 # Number of subjects
-num_subjects = 1 # 10
+num_subjects = 10
+# Number of units in dense layers
+num_dense = 4096
+# Number of units in LSTM layers
+num_lstm = 128
+# Name of sensor used
+sensors = 'fpz'
 # Path to spectrograms
-impath = '/Users/anders1991/imdata/'
+impath = "/Users/anders1991/imdata/"
 init_seed = 3
 n_epochs = 50
 batch_size = 75
+
+
 
 def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
     # load weights data
@@ -131,27 +140,9 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
     return lcrn
 
 
-def get_subjects_list():
-    subjects_list = []
-    for i in range(1,num_subjects+1):
-        print("Loading subject %d..." %(i))
-        inputs_night1, targets_night1  = load_spectrograms(i,1)
-        if(i!=20):
-            inputs_night2, targets_night2  = load_spectrograms(i,2)
-        else:
-            inputs_night2 = np.empty((0,3,224,224),dtype='uint8')
-            targets_night2 = np.empty((0,),dtype='uint8')           
-        
-        current_inputs = np.concatenate((inputs_night1,inputs_night2),axis=0)
-        current_targets = np.concatenate((targets_night1, targets_night2),axis=0)
-        subjects_list.append([current_inputs,current_targets])
-    
-    return subjects_list
-
-
 # LOAD SPECTROGRAMS (copy-pasted from Albert)
 def load_spectrograms(subject_id, night_id):
-    labels = np.loadtxt(impath +'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+ 'fpz' +'/labels.txt',dtype='str')
+    labels = np.loadtxt(impath +'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/labels.txt',dtype=bytes).astype(str)
     num_images = np.size(labels)
     
     targets = np.zeros((num_images), dtype='int')
@@ -172,7 +163,7 @@ def load_spectrograms(subject_id, night_id):
     inputs = np.zeros((num_images,224,224,3),dtype='uint8')
 
     for idx in range(1,num_images+1):    
-        rawim = io.imread(impath + 'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+'fpz'+'/img_'+ np.str(idx) +'.png')
+        rawim = io.imread(impath + 'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/img_'+ np.str(idx) +'.png')
         rawim = rawim[:,:,0:3]
         
         h, w, _ = rawim.shape
@@ -184,8 +175,219 @@ def load_spectrograms(subject_id, night_id):
     return inputs, targets
 
 
-if __name__ == '__main__':           
+def get_subjects_list():
+    subjects_list = []
+    for i in range(1,num_subjects+1):
+        print("Loading subject %d..." %(i))
+        inputs_night1, targets_night1  = load_spectrograms(i,1)
+        if i != 20:
+            inputs_night2, targets_night2  = load_spectrograms(i,2)
+        else:
+            inputs_night2 = np.empty((0,224,224,3),dtype='uint8')
+            targets_night2 = np.empty((0,),dtype='uint8')           
+        
+        current_inputs = np.concatenate((inputs_night1,inputs_night2),axis=0)
+        current_targets = np.concatenate((targets_night1, targets_night2),axis=0)
+        subjects_list.append([current_inputs,current_targets])
+    
+    return subjects_list
 
-    # Build model, print summary
+
+def timebatcher(timesteps, idxs):
+    timedata = np.empty((0, timesteps, 224, 224, 3), dtype='uint8')
+    labels = np.empty((0,), dtype='uint8')
+
+    idx_start = int(np.floor(timesteps/2))
+    idx_end = int(np.ceil(timesteps/2))
+
+    # get subject data
+    for subject in idxs:
+        inputs, targets = subjects_list[subject]
+        print("\tPacking data for subject", subject, "...")
+
+        # pack subject data in batches of size (timesteps x 224 x 224 x 3)
+        for idx in range(idx_start, inputs.shape[0]-idx_end):
+            # center batch on labelled spectrogram
+            timebatch = np.expand_dims(inputs[idx-idx_start:idx+idx_end], axis=0)
+            label = np.expand_dims(targets[idx], axis=0)
+
+            timedata = np.concatenate((timedata, timebatch), axis=0)
+            labels = np.concatenate((labels, label), axis=0)
+
+            if (idx % 100 == 0) or (idx == inputs.shape[0]):
+                print("\t\tCompleted batch", idx, "/", inputs.shape[0])
+    
+    # one-hot encode labels
+    labels = to_categorical(labels, num_classes=5)
+
+    return timedata, labels
+
+
+# Split the dataset into training, validation and test set
+def split_dataset(subjects_list, idx_tmp, idx_test, timesteps=5): 
+    print("Initialized data packing. This might take a while...")
+
+    # Shuffle indices
+    random.shuffle(idx_tmp)
+    idx_train = idx_tmp[0:15]
+    idx_val = idx_tmp[15:19]
+    
+    # pack datasets into time batches
+    print("Preparing training data...")
+    inputs_train, targets_train = timebatcher(timesteps, idx_train)
+    print("Preparing validation data...")
+    inputs_val, targets_val = timebatcher(timesteps, idx_val)
+    print("Preparing test data...")
+    inputs_test, targets_test = timebatcher(timesteps, idx_test)
+    
+    return (inputs_train, targets_train), (inputs_val, targets_val), (inputs_test, targets_test)
+
+     
+# Weight the classes according to their frequency in the dataset
+def get_class_weights(targets_train):
+    
+    n_samples = np.sum(targets_train, axis=0)
+    print(n_samples)
+    n_total = np.sum(n_samples)
+    #
+    w = [n_total/n_class for n_class in n_samples]
+    wsum = np.sum(w)
+    w = [10*wclass/wsum for wclass in w]
+        
+    class_weights = {}
+    keys = range(5)
+    for i in keys:
+        class_weights[i] = w[i]
+    
+    return class_weights
+
+
+# Function that plots training and validation error/accuracy
+def plot_training_history(history, fold, plotpath, show=False):
+                
+    # summarize history for accuracy
+    plt.plot(history.history['acc'])
+    plt.plot(history.history['val_acc'])
+    plt.title('model accuracy')
+    plt.ylabel('accuracy')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'val'], loc='upper left')
+    filename = plotpath+'/fold' + str(fold) + '_acc.png'
+    plt.savefig(filename, dpi=72)
+    if show:
+        plt.show()
+    plt.close()
+    
+    # summarize history for loss
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('model loss')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'val'], loc='upper left')
+    filename = plotpath+'/fold' + str(fold) + '_loss.png'
+    plt.savefig(filename, dpi=72)
+    if show:
+        plt.show()
+    plt.close()
+
+ 
+# Custom Keras Callback class to continuously calculate test error.
+# Error is only calculated if the epoch has lower validation error than all previous epochs. 
+# Test error and accuracy can be accessed through TestOnBest.history       
+class TestOnBest(Callback):
+    # Initialize dict to store test loss and accuracy, and some tracker variables
+    def __init__(self, test_data):
+        self.test_data = test_data
+        self.best_loss = float('inf')
+        self.current_loss = float('inf')
+        self.history = {'test_loss': [], 'test_acc': []}
+
+    # At the end of epoch, check if validation loss is the best so far    
+    def on_epoch_end(self, batch, logs={}):
+        try:
+            self.current_loss = logs.get('val_loss')
+            # If validation error is lowest, compute test error and store in dict
+            if (self.current_loss < self.best_loss):
+                self.best_loss = self.current_loss
+                x, y = self.test_data
+                loss, acc = self.model.evaluate(x, y, verbose=0)
+                self.history['test_loss'].append(loss)
+                self.history['test_acc'].append(acc)
+                print('\nTesting loss: {}, acc: {}\n'.format(loss, acc))
+            # Else store NaNs (to keep correct epoch indexing)
+            else:
+                self.history['test_loss'].append(float('nan'))
+                self.history['test_acc'].append(float('nan'))
+        except:
+            self.history['test_loss'].append(float('nan'))
+            self.history['test_acc'].append(float('nan'))       
+
+
+if __name__ == '__main__':    
+
+    # Make sure output paths are in place
+    plotpath = '../plots'
+    if not os.path.exists(plotpath):
+            os.makedirs(plotpath)   
+    outpath = '../outputs'
+    if not os.path.exists(outpath):
+            os.makedirs(outpath)
+
+    # Read in all the data
+    subjects_list = get_subjects_list()
+    
+    # Build model, save initial weights (TODO: Save/load only trainable weights?)
     model = build_model(init_seed)
-    print(model.summary())
+    # print summary
+    model.summary()
+    # save initial weights
+    Winit = model.get_weights()
+    
+    loo=LeaveOneOut()
+    fold=1
+    for idx_tmp, idx_test in loo.split(range(num_subjects)):
+        
+        print("Fold num %d\tSubject id %d" %(fold, idx_test+1))
+        #f = open('outputs/sleep5_fold'+str(fold), 'w').close()
+        
+        # reset weights to initial (common initialization for all folds)
+        model.set_weights(Winit)
+        
+        # Get training, validation, test set
+        # inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test 
+        train, val, test = split_dataset(subjects_list, idx_tmp, idx_test)
+        inputs_train, targets_train = train
+        inputs_val, targets_val = val
+        inputs_test, targets_test = test
+    
+        # Get class weights for the current training set
+        class_weights = get_class_weights(targets_train)     
+        
+        # Call testing history callback
+        test_history = TestOnBest((inputs_test, targets_test))
+        # Run training
+        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights,
+        validation_data = (inputs_val, targets_val), callbacks=[test_history], verbose=2)
+        
+        # Retreive test set statistics and merge to training statistics log
+        history.history.update(test_history.history)
+    
+        # Save training history        
+        fn = outpath+'/train_hist_fold'+str(fold)+'.pickle'
+        pickle_out = open(fn,'wb')
+        pickle.dump(history.history, pickle_out)
+        pickle_out.close()
+        
+        # Save weights after training is finished
+        fn = outpath+'/weights_fold'+str(fold)+'.hdf5'
+        model.save_weights(fn)
+        
+        # Plot loss and accuracy by epoch
+        plot_training_history(history, fold, plotpath)
+                    
+        fold+=1  
+    
+    
+    # Clear session
+    K.clear_session()
