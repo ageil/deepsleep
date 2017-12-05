@@ -159,9 +159,9 @@ def get_subjects_list():
 def split_dataset(subjects_list, idx): 
 
     # Split the list in 3 subsets
-    idx_test = idx[0:1]
-    idx_val = idx[2:5]
-    idx_train = idx[6:19]
+    idx_test = idx[0:2]
+    idx_val = idx[2:6]
+    idx_train = idx[6:20]
     
     # Training
     train_data = [subjects_list[i] for i in idx_train]
