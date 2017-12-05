@@ -12,21 +12,35 @@ from keras.layers.pooling import MaxPooling2D
 from keras.layers.recurrent import SimpleRNN, LSTM, GRU
 from keras.layers.wrappers import TimeDistributed, Bidirectional
 from keras.utils.data_utils import get_file
+from keras import regularizers
 
 import pickle
 import matplotlib.pyplot as plt
-import random
+plt.switch_backend('agg')
 import os
 import numpy as np
 from skimage import io
 import skimage.transform
 from sklearn.model_selection import LeaveOneOut
+from sklearn.metrics import confusion_matrix
 
+# test: 0:1 validation: 2:5, train: 6:19
+folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
+                      [20,18,13,9,3,11,16,1,19,5,4,14,7,6,15,17,2,12,8,10],
+                      [16,13,2,9,15,8,18,14,7,17,19,6,11,20,3,1,4,5,10,12],
+                      [17,4,1,20,5,16,8,7,2,18,10,15,14,19,13,12,9,11,3,6],
+                      [2,11,6,15,8,12,5,4,14,13,7,19,3,10,9,18,16,17,1,20],
+                      [19,6,10,2,11,15,7,3,9,13,5,20,17,4,1,14,8,18,16,12],
+                      [15,9,5,6,13,19,2,17,18,3,11,12,4,20,1,10,14,16,7,8],
+                      [5,12,9,1,17,13,15,11,20,19,18,7,6,14,4,8,10,16,3,2],
+                      [8,3,10,16,12,1,6,15,20,13,19,18,4,14,9,11,7,2,17,5],
+                      [1,7,3,15,10,6,18,4,5,12,19,20,2,13,16,14,8,9,11,17]])
+folds = folds-1
 
 # Number of output classes
 num_classes = 5
 # Number of subjects
-num_subjects = 10
+num_subjects = 20
 # Number of units in dense layers
 num_dense = 4096
 # Number of units in LSTM layers
@@ -36,12 +50,13 @@ sensors = 'fpz'
 # Path to spectrograms
 impath = "/Users/anders1991/imdata/"
 init_seed = 3
-n_epochs = 50
+n_epochs = 2
 batch_size = 75
+tsteps = 5
 
 
 
-def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
+def build_model(init_seed=None, cnn_softmax=False, timesteps=tsteps, droprate=0.5):
     # load weights data
     wpath = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels.h5'
     wpath_notop = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5'
@@ -90,16 +105,18 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
     cnn_top = Sequential()
     xavier = initializers.glorot_normal(seed=init_seed)
     cnn_top.add(TimeDistributed(Flatten(), input_shape=cnn.output_shape[1:], name="block6_tdist_flatten")) # timesteps x 25088
-    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier), name="block6_tdist_dense1")) # timesteps x 4096
+    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_dense1")) # timesteps x 4096
     cnn_top.add(TimeDistributed(Dropout(rate=droprate), name="block6_tdist_dropout1")) # timesteps x 4096
-    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier), name="block6_tdist_dense2")) # timesteps x 4096
+    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_dense2")) # timesteps x 4096
     cnn_top.add(TimeDistributed(Dropout(rate=droprate), name="block6_tdist_dropout2")) # timesteps x 4096
-    cnn_top.add(TimeDistributed(Dense(num_classes, activation='softmax', kernel_initializer=xavier), name="block6_tdist_softmax")) # timesteps x num_classes
+    cnn_top.add(TimeDistributed(Dense(num_classes, activation='softmax', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_softmax")) # timesteps x num_classes
 
 
     # RNN
     rnn = Sequential()
-    rnn.add(Bidirectional(LSTM(32, return_sequences=True), name="block7_bidir_lstm1", input_shape=(5, 4096))) # timesteps x (2x32)
+    rnn.add(TimeDistributed(Flatten(), input_shape=cnn.output_shape[1:], name="block7_tdist_flatten")) # timesteps x 25088; skip this line if including block 6
+    # rnn.add(Bidirectional(LSTM(32, return_sequences=True), name="block7_bidir_lstm1", input_shape=(5, 4096))) # timesteps x (2x32); add this line if including block 6
+    rnn.add(Bidirectional(LSTM(32, return_sequences=True), name="block7_bidir_lstm1")) # timesteps x (2x32)
     rnn.add(Dropout(rate=droprate, name="block7_dropout1")) # timesteps x (2x32)
     rnn.add(Bidirectional(LSTM(64, return_sequences=True), name="block7_bidir_lstm2")) # timesteps x (2x64)
     rnn.add(Dropout(rate=droprate, name="block7_dropout2")) # timesteps x (2x64)
@@ -119,12 +136,12 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=5, droprate=0.5):
     # load VGG16 imagenet weights
     lcrn.load_weights(weights_path_no_top) # only base layers
     # add cnn classification layers
-    if cnn_softmax: # include softmax
-        for layer in cnn_top.layers:
-            lcrn.add(layer)
-    else: # exclude softmax
-        for layer in cnn_top.layers[:-1]: # skip last layer
-            lcrn.add(layer)
+    # if cnn_softmax: # include softmax
+        # for layer in cnn_top.layers:
+            # lcrn.add(layer)
+    # else: # exclude softmax
+        # for layer in cnn_top.layers[:-1]: # skip last layer
+            # lcrn.add(layer)
     # add rnn layers
     for layer in rnn.layers:
         lcrn.add(layer)
@@ -216,7 +233,8 @@ def timebatcher(timesteps, idxs):
 
             if (idx % 100 == 0) or (idx == inputs.shape[0]):
                 print("\t\tCompleted batch", idx, "/", inputs.shape[0])
-    
+    print(timedata.shape)
+    print(labels.shape)
     # one-hot encode labels
     labels = to_categorical(labels, num_classes=5)
 
@@ -224,13 +242,12 @@ def timebatcher(timesteps, idxs):
 
 
 # Split the dataset into training, validation and test set
-def split_dataset(subjects_list, idx_tmp, idx_test, timesteps=5): 
+def split_dataset(subjects_list, idx, timesteps=tsteps): 
     print("Initialized data packing. This might take a while...")
 
-    # Shuffle indices
-    random.shuffle(idx_tmp)
-    idx_train = idx_tmp[0:15]
-    idx_val = idx_tmp[15:19]
+    idx_test = idx[0:2]
+    idx_val = idx[2:6]
+    idx_train = idx[6:20]
     
     # pack datasets into time batches
     print("Preparing training data...")
@@ -247,7 +264,6 @@ def split_dataset(subjects_list, idx_tmp, idx_test, timesteps=5):
 def get_class_weights(targets_train):
     
     n_samples = np.sum(targets_train, axis=0)
-    print(n_samples)
     n_total = np.sum(n_samples)
     #
     w = [n_total/n_class for n_class in n_samples]
@@ -301,27 +317,41 @@ class TestOnBest(Callback):
         self.test_data = test_data
         self.best_loss = float('inf')
         self.current_loss = float('inf')
-        self.history = {'test_loss': [], 'test_acc': []}
+        self.best_weights = []
+        self.confusion_matrix = []
+        self.history = {'test_acc': []}
 
     # At the end of epoch, check if validation loss is the best so far    
     def on_epoch_end(self, batch, logs={}):
-        try:
-            self.current_loss = logs.get('val_loss')
-            # If validation error is lowest, compute test error and store in dict
-            if (self.current_loss < self.best_loss):
-                self.best_loss = self.current_loss
-                x, y = self.test_data
-                loss, acc = self.model.evaluate(x, y, verbose=0)
-                self.history['test_loss'].append(loss)
-                self.history['test_acc'].append(acc)
-                print('\nTesting loss: {}, acc: {}\n'.format(loss, acc))
-            # Else store NaNs (to keep correct epoch indexing)
-            else:
-                self.history['test_loss'].append(float('nan'))
-                self.history['test_acc'].append(float('nan'))
-        except:
-            self.history['test_loss'].append(float('nan'))
-            self.history['test_acc'].append(float('nan'))       
+        self.current_loss = logs.get('val_loss')
+        
+        # If validation error is lowest, compute test error and store in dict
+        if (self.current_loss < self.best_loss):
+            
+            self.best_loss = self.current_loss
+            x, y = self.test_data
+
+            # Get predictions
+            y_pred = self.model.predict(x)
+            # probability to hard class assignment
+            y_pred = to_categorical(np.argmax(y_pred, axis=1), num_classes=num_classes)
+
+            # Calculate accuracy (checked: equals accuracy obtained from model.fit())
+            acc = y_pred + y
+            acc = np.sum(acc==2, dtype='float32')/np.shape(acc)[0]
+            print('Test acc: {}\n'.format(acc))
+
+            # Calculate confusion matrix
+            # Convert from one-hot to integer labels
+            y_pred = np.argmax(y_pred, axis=1)
+            y = np.argmax(y, axis=1)
+            m = confusion_matrix(y, y_pred, labels=None, sample_weight=None)
+            self.confusion_matrix = m
+
+            # Get model weights and store in temporary variable
+            self.best_weights = model.get_weights()
+        else:
+            self.history['test_acc'].append(float('nan'))
 
 
 if __name__ == '__main__':    
@@ -343,12 +373,11 @@ if __name__ == '__main__':
     model.summary()
     # save initial weights
     Winit = model.get_weights()
-    
-    loo=LeaveOneOut()
-    fold=1
-    for idx_tmp, idx_test in loo.split(range(num_subjects)):
+
+    for fold in range(10):
+    # for idx_tmp, idx_test in loo.split(range(num_subjects)):
         
-        print("Fold num %d\tSubject id %d" %(fold, idx_test+1))
+        print("Fold num %d" %(fold))
         #f = open('outputs/sleep5_fold'+str(fold), 'w').close()
         
         # reset weights to initial (common initialization for all folds)
@@ -356,7 +385,7 @@ if __name__ == '__main__':
         
         # Get training, validation, test set
         # inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test 
-        train, val, test = split_dataset(subjects_list, idx_tmp, idx_test)
+        train, val, test = split_dataset(subjects_list, folds[fold])
         inputs_train, targets_train = train
         inputs_val, targets_val = val
         inputs_test, targets_test = test
@@ -373,14 +402,23 @@ if __name__ == '__main__':
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
     
-        # Save training history        
-        fn = outpath+'/train_hist_fold'+str(fold)+'.pickle'
+        # Save training history
+        fn = '../outputs/train_hist_fold'+str(fold)+'.pickle'
         pickle_out = open(fn,'wb')
         pickle.dump(history.history, pickle_out)
         pickle_out.close()
+        fn_hist = fn
+
+        # Save confusion matrix
+        fn = '../outputs/confusion_matrix_fold'+str(fold)+'.pickle'
+        pickle_out = open(fn, 'wb')
+        pickle.dump(test_history.confusion_matrix, pickle_out)
+        pickle_out.close()
+        fn_mat = fn
         
         # Save weights after training is finished
-        fn = outpath+'/weights_fold'+str(fold)+'.hdf5'
+        model.set_weights(test_history.best_weights)
+        fn = '../outputs/weights_fold'+str(fold)+'.hdf5'
         model.save_weights(fn)
         
         # Plot loss and accuracy by epoch
