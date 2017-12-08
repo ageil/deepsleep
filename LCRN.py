@@ -18,6 +18,7 @@ import pickle
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
 import os
+import sys
 import numpy as np
 from skimage import io
 import skimage.transform
@@ -37,6 +38,10 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
                       [1,7,3,15,10,6,18,4,5,12,19,20,2,13,16,14,8,9,11,17]])
 folds = folds-1
 
+# Get fold range from terminal
+fmin = int(sys.argv[1]) 
+fmax = int(sys.argv[2]) 
+
 # Number of output classes
 num_classes = 5
 # Number of subjects
@@ -48,7 +53,9 @@ num_lstm = 128
 # Name of sensor used
 sensors = 'fpz'
 # Path to spectrograms
-impath = "/Users/anders1991/imdata/"
+impath = '../imdata/'
+# Model name (for output filenames)
+mdname = 'LCRN1'
 init_seed = 3
 n_epochs = 2
 batch_size = 75
@@ -256,7 +263,7 @@ def split_dataset(subjects_list, idx, timesteps=tsteps):
     inputs_val, targets_val = timebatcher(timesteps, idx_val)
     print("Preparing test data...")
     inputs_test, targets_test = timebatcher(timesteps, idx_test)
-    
+
     return (inputs_train, targets_train), (inputs_val, targets_val), (inputs_test, targets_test)
 
      
@@ -374,7 +381,7 @@ if __name__ == '__main__':
     # save initial weights
     Winit = model.get_weights()
 
-    for fold in range(10):
+    for fold in range(fmin, fmax+1):
     # for idx_tmp, idx_test in loo.split(range(num_subjects)):
         
         print("Fold num %d" %(fold))
@@ -385,32 +392,41 @@ if __name__ == '__main__':
         
         # Get training, validation, test set
         # inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test 
-        train, val, test = split_dataset(subjects_list, folds[fold])
+        # train, val, test = split_dataset(subjects_list, folds[fold])
+        with open("../timebatches/train"+str(fold)+".pickle", 'rb') as f:
+            train = pickle.load(f)
+        with open("../timebatches/val"+str(fold)+".pickle", 'rb') as f:
+            val = pickle.load(f)
+        with open("../timebatches/test"+str(fold)+".pickle", 'rb') as f:
+            test = pickle.load(f)            
         inputs_train, targets_train = train
         inputs_val, targets_val = val
         inputs_test, targets_test = test
     
-        # Get class weights for the current training set
-        class_weights = get_class_weights(targets_train)     
+        # Get sample weights for the current training set
+        sample_weights_tr = class_weight.compute_sample_weight('balanced', targets_train, indices=None)
+        
+        # Get sample weights for the validation set
+        sample_weights_val = class_weight.compute_sample_weight('balanced', targets_val, indices=None)
         
         # Call testing history callback
         test_history = TestOnBest((inputs_test, targets_test))
         # Run training
-        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights,
-        validation_data = (inputs_val, targets_val), callbacks=[test_history], verbose=2)
+        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, sample_weight=sample_weights_tr,
+        validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
         
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
     
         # Save training history
-        fn = '../outputs/train_hist_fold'+str(fold)+'.pickle'
+        fn = '../outputs/'+mdname+'train_hist_fold'+str(fold)+'.pickle'
         pickle_out = open(fn,'wb')
         pickle.dump(history.history, pickle_out)
         pickle_out.close()
         fn_hist = fn
 
         # Save confusion matrix
-        fn = '../outputs/confusion_matrix_fold'+str(fold)+'.pickle'
+        fn = '../outputs/'+mdname+'confusion_matrix_fold'+str(fold)+'.pickle'
         pickle_out = open(fn, 'wb')
         pickle.dump(test_history.confusion_matrix, pickle_out)
         pickle_out.close()
@@ -418,7 +434,7 @@ if __name__ == '__main__':
         
         # Save weights after training is finished
         model.set_weights(test_history.best_weights)
-        fn = '../outputs/weights_fold'+str(fold)+'.hdf5'
+        fn = '../outputs/'+mdname+'weights_fold'+str(fold)+'.hdf5'
         model.save_weights(fn)
         
         # Plot loss and accuracy by epoch

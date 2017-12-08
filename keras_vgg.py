@@ -19,6 +19,7 @@ from keras.callbacks import Callback
 from keras import backend as K
 from keras import regularizers
 
+import sys
 import os
 import pickle
 import matplotlib.pyplot as plt
@@ -27,6 +28,7 @@ import numpy as np
 from skimage import io
 import skimage.transform
 from sklearn.metrics import confusion_matrix
+from sklearn.utils import class_weight
 
 # test: 0:1 validation: 2:5, train: 6:19
 folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
@@ -41,6 +43,9 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
 [1,7,3,15,10,6,18,4,5,12,19,20,2,13,16,14,8,9,11,17]])
 folds = folds-1
 
+# Get fold range from terminal
+fmin = int(sys.argv[1]) 
+fmax = int(sys.argv[2]) 
 
 # Number of output classes
 num_classes = 5
@@ -55,7 +60,7 @@ sensors = 'fpz'
 # Path to spectrograms
 impath = '../imdata/'
 init_seed = 3
-n_epochs = 2
+n_epochs = 50
 batch_size = 75
 
 
@@ -69,15 +74,15 @@ def build_model(init_seed=None):
     # Input layer
     dense_model.add(Flatten(input_shape=base_model.output_shape[1:]))
     # FC6
-    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed), kernel_regularizer=regularizers.l2(0.01)))
+    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
     # FC6 Dropout
     dense_model.add(Dropout(rate=0.5))
     # FC7
-    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed), kernel_regularizer=regularizers.l2(0.01)))
+    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
     # FC7 Dropout
     dense_model.add(Dropout(rate=0.5))
     # Softmax
-    dense_model.add(Dense(num_classes, activation='softmax', kernel_initializer=initializers.glorot_normal(seed=init_seed), kernel_regularizer=regularizers.l2(0.01)))
+    dense_model.add(Dense(num_classes, activation='softmax', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
 
     # CREATE THE FULL MODEL (stack the dense layers on the convolutional layers)
     model = Sequential()
@@ -195,23 +200,6 @@ def split_dataset(subjects_list, idx):
     
     return inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test
 
-     
-# Weight the classes according to their frequency in the dataset
-def get_class_weights(targets_train):
-    
-    n_samples = np.sum(targets_train, axis=0)
-    n_total = np.sum(n_samples)
-    #
-    w = [n_total/n_class for n_class in n_samples]
-    wsum = np.sum(w)
-    w = [10*wclass/wsum for wclass in w]
-        
-    class_weights = {}
-    keys = range(5)
-    for i in keys:
-        class_weights[i] = w[i]
-    
-    return class_weights
 
 
 # Function that plots training and validation error/accuracy
@@ -311,7 +299,7 @@ if __name__ == '__main__':
     Winit = model.get_weights()
     
    
-    for fold in range(10):
+    for fold in range(fmin, fmax+1):
         
         print("Fold num %d" %(fold))
         #f = open('outputs/sleep5_fold'+str(fold), 'w').close()
@@ -322,14 +310,17 @@ if __name__ == '__main__':
         # Get training, validation, test set
         inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test = split_dataset(subjects_list, folds[fold])
     
-        # Get class weights for the current training set
-        class_weights = get_class_weights(targets_train)     
+        # Get sample weights for the current training set
+        sample_weights_tr = class_weight.compute_sample_weight('balanced', targets_train, indices=None)
+        
+        # Get sample weights for the validation set
+        sample_weights_val = class_weight.compute_sample_weight('balanced', targets_val, indices=None)
         
         # Call testing history callback
         test_history = TestOnBest((inputs_test, targets_test))
         # Run training
-        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, class_weight=class_weights,
-        validation_data = (inputs_val, targets_val), callbacks=[test_history], verbose=2)
+        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, sample_weight=sample_weights_tr,
+        validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
         
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
