@@ -31,6 +31,7 @@ class TestOnBest(Callback):
         self.best_weights = []
         self.confusion_matrix = []
         self.history = {'test_acc': []}
+        print(model.folds)
 
     # At the end of epoch, check if validation loss is the best so far    
     def on_epoch_end(self, batch, logs={}):
@@ -112,6 +113,7 @@ model.add(Dense(2, kernel_initializer='uniform', kernel_regularizer=regularizers
 model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 # Fit the model
 
+model.folds = 'hej'
 
 # TRAIN MODEL
 test_history = TestOnBest((X,Y))

@@ -20,10 +20,11 @@ plt.switch_backend('agg')
 import os
 import sys
 import numpy as np
+import glob
 from skimage import io
 import skimage.transform
-from sklearn.model_selection import LeaveOneOut
 from sklearn.metrics import confusion_matrix
+from sklearn.utils import class_weight
 
 # test: 0:1 validation: 2:5, train: 6:19
 folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
@@ -37,6 +38,12 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
                       [8,3,10,16,12,1,6,15,20,13,19,18,4,14,9,11,7,2,17,5],
                       [1,7,3,15,10,6,18,4,5,12,19,20,2,13,16,14,8,9,11,17]])
 folds = folds-1
+
+class_weights = {0: 1.69217121,
+ 1: 2.76249095,
+ 2: 0.43409,
+ 3: 1.36469326,
+ 4: 0.98949553}
 
 # Get fold range from terminal
 fmin = int(sys.argv[1]) 
@@ -58,8 +65,8 @@ impath = '../imdata/'
 mdname = 'LCRN1'
 init_seed = 3
 n_epochs = 2
-batch_size = 75
-tsteps = 5
+batch_size = 70
+tsteps = 3
 
 
 
@@ -109,14 +116,14 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=tsteps, droprate=0.
 
 
     # OPTIONAL: Classification block (see param cnn_softmax)
-    cnn_top = Sequential()
-    xavier = initializers.glorot_normal(seed=init_seed)
-    cnn_top.add(TimeDistributed(Flatten(), input_shape=cnn.output_shape[1:], name="block6_tdist_flatten")) # timesteps x 25088
-    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_dense1")) # timesteps x 4096
-    cnn_top.add(TimeDistributed(Dropout(rate=droprate), name="block6_tdist_dropout1")) # timesteps x 4096
-    cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_dense2")) # timesteps x 4096
-    cnn_top.add(TimeDistributed(Dropout(rate=droprate), name="block6_tdist_dropout2")) # timesteps x 4096
-    cnn_top.add(TimeDistributed(Dense(num_classes, activation='softmax', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_softmax")) # timesteps x num_classes
+    #cnn_top = Sequential()
+    #xavier = initializers.glorot_normal(seed=init_seed)
+    #cnn_top.add(TimeDistributed(Flatten(), input_shape=cnn.output_shape[1:], name="block6_tdist_flatten")) # timesteps x 25088
+    #cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_dense1")) # timesteps x 4096
+    #cnn_top.add(TimeDistributed(Dropout(rate=droprate), name="block6_tdist_dropout1")) # timesteps x 4096
+    #cnn_top.add(TimeDistributed(Dense(4096, activation='relu', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_dense2")) # timesteps x 4096
+    #cnn_top.add(TimeDistributed(Dropout(rate=droprate), name="block6_tdist_dropout2")) # timesteps x 4096
+    #cnn_top.add(TimeDistributed(Dense(num_classes, activation='softmax', kernel_initializer=xavier, kernel_regularizer=regularizers.l2(0.01)), name="block6_tdist_softmax")) # timesteps x num_classes
 
 
     # RNN
@@ -163,127 +170,21 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=tsteps, droprate=0.
 
     return lcrn
 
+def data_gen(paths):
+    while 1:
+        for file in paths:
+            with open(file, 'rb') as f:
+                x, y = pickle.load(f)
+            y_cat = np.argmax(y, axis=1)
+            sample_weights = class_weight.compute_sample_weight(class_weights, y_cat, indices=None)
+            yield x, y, sample_weights
 
-# LOAD SPECTROGRAMS (copy-pasted from Albert)
-def load_spectrograms(subject_id, night_id):
-    labels = np.loadtxt(impath +'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/labels.txt',dtype=bytes).astype(str)
-    num_images = np.size(labels)
-    
-    targets = np.zeros((num_images), dtype='int')
-    targets[:]=-1    
-    targets[labels=='W'] = 0
-    targets[labels=='1'] = 1
-    targets[labels=='2'] = 2
-    targets[labels=='3'] = 3
-    targets[labels=='4'] = 3
-    targets[labels=='R'] = 4
-    
-    if max(targets)>4:
-        print('Error in reading targets')
-    
-    targets = targets[targets!=-1]
-    num_images = np.size(targets)
-    
-    inputs = np.zeros((num_images,224,224,3),dtype='uint8')
-
-    for idx in range(1,num_images+1):    
-        rawim = io.imread(impath + 'sub'+str(subject_id)+'_n'+str(night_id)+'_img_'+sensors+'/img_'+ np.str(idx) +'.png')
-        rawim = rawim[:,:,0:3]
-        
-        h, w, _ = rawim.shape
-        if not (h==224 and w==224):
-            rawim = skimage.transform.resize(rawim, (224, 224), preserve_range=True)
-               
-        inputs[idx-1,:,:,:]=rawim
-    
-    return inputs, targets
-
-
-def get_subjects_list():
-    subjects_list = []
-    for i in range(1,num_subjects+1):
-        print("Loading subject %d..." %(i))
-        inputs_night1, targets_night1  = load_spectrograms(i,1)
-        if i != 20:
-            inputs_night2, targets_night2  = load_spectrograms(i,2)
-        else:
-            inputs_night2 = np.empty((0,224,224,3),dtype='uint8')
-            targets_night2 = np.empty((0,),dtype='uint8')           
-        
-        current_inputs = np.concatenate((inputs_night1,inputs_night2),axis=0)
-        current_targets = np.concatenate((targets_night1, targets_night2),axis=0)
-        subjects_list.append([current_inputs,current_targets])
-    
-    return subjects_list
-
-
-def timebatcher(timesteps, idxs):
-    timedata = np.empty((0, timesteps, 224, 224, 3), dtype='uint8')
-    labels = np.empty((0,), dtype='uint8')
-
-    idx_start = int(np.floor(timesteps/2))
-    idx_end = int(np.ceil(timesteps/2))
-
-    # get subject data
-    for subject in idxs:
-        inputs, targets = subjects_list[subject]
-        print("\tPacking data for subject", subject, "...")
-
-        # pack subject data in batches of size (timesteps x 224 x 224 x 3)
-        for idx in range(idx_start, inputs.shape[0]-idx_end):
-            # center batch on labelled spectrogram
-            timebatch = np.expand_dims(inputs[idx-idx_start:idx+idx_end], axis=0)
-            label = np.expand_dims(targets[idx], axis=0)
-
-            timedata = np.concatenate((timedata, timebatch), axis=0)
-            labels = np.concatenate((labels, label), axis=0)
-
-            if (idx % 100 == 0) or (idx == inputs.shape[0]):
-                print("\t\tCompleted batch", idx, "/", inputs.shape[0])
-    print(timedata.shape)
-    print(labels.shape)
-    # one-hot encode labels
-    labels = to_categorical(labels, num_classes=5)
-
-    return timedata, labels
-
-
-# Split the dataset into training, validation and test set
-def split_dataset(subjects_list, idx, timesteps=tsteps): 
-    print("Initialized data packing. This might take a while...")
-
-    idx_test = idx[0:2]
-    idx_val = idx[2:6]
-    idx_train = idx[6:20]
-    
-    # pack datasets into time batches
-    print("Preparing training data...")
-    inputs_train, targets_train = timebatcher(timesteps, idx_train)
-    print("Preparing validation data...")
-    inputs_val, targets_val = timebatcher(timesteps, idx_val)
-    print("Preparing test data...")
-    inputs_test, targets_test = timebatcher(timesteps, idx_test)
-
-    return (inputs_train, targets_train), (inputs_val, targets_val), (inputs_test, targets_test)
-
-     
-# Weight the classes according to their frequency in the dataset
-def get_class_weights(targets_train):
-    
-    n_samples = np.sum(targets_train, axis=0)
-    n_total = np.sum(n_samples)
-    #
-    w = [n_total/n_class for n_class in n_samples]
-    wsum = np.sum(w)
-    w = [10*wclass/wsum for wclass in w]
-        
-    class_weights = {}
-    keys = range(5)
-    for i in keys:
-        class_weights[i] = w[i]
-    
-    return class_weights
-
+def data_gen_test(paths):
+    while 1:
+        for file in paths:
+            with open(file, 'rb') as f:
+                x, y = pickle.load(f)
+            yield x, y
 
 # Function that plots training and validation error/accuracy
 def plot_training_history(history, fold, plotpath, show=False):
@@ -336,10 +237,20 @@ class TestOnBest(Callback):
         if (self.current_loss < self.best_loss):
             
             self.best_loss = self.current_loss
-            x, y = self.test_data
+            test_paths = self.test_data
 
+            y_pred = np.empty((1,))
+            y = np.empty((1,))
             # Get predictions
-            y_pred = self.model.predict(x)
+            for file in test_paths:
+                with open(file, 'rb') as f:
+                    x, y_batch = pickle.load(f)
+                ypred_batch = self.model.predict_on_batch(self, x)
+                np.column_stack((y_pred, ypred_batch))
+                np.column_stack((y, y_batch))
+            y_pred = y_pred[1:]
+            y = y[1:]
+            
             # probability to hard class assignment
             y_pred = to_categorical(np.argmax(y_pred, axis=1), num_classes=num_classes)
 
@@ -371,8 +282,6 @@ if __name__ == '__main__':
     if not os.path.exists(outpath):
             os.makedirs(outpath)
 
-    # Read in all the data
-    subjects_list = get_subjects_list()
     
     # Build model, save initial weights (TODO: Save/load only trainable weights?)
     model = build_model(init_seed)
@@ -390,30 +299,30 @@ if __name__ == '__main__':
         # reset weights to initial (common initialization for all folds)
         model.set_weights(Winit)
         
-        # Get training, validation, test set
-        # inputs_train, targets_train, inputs_val, targets_val, inputs_test, targets_test 
-        # train, val, test = split_dataset(subjects_list, folds[fold])
-        with open("../timebatches/train"+str(fold)+".pickle", 'rb') as f:
-            train = pickle.load(f)
-        with open("../timebatches/val"+str(fold)+".pickle", 'rb') as f:
-            val = pickle.load(f)
-        with open("../timebatches/test"+str(fold)+".pickle", 'rb') as f:
-            test = pickle.load(f)            
-        inputs_train, targets_train = train
-        inputs_val, targets_val = val
-        inputs_test, targets_test = test
+
+        tr_paths = []
+        for sub in folds[fold, 6:]:
+            tr_paths = tr_paths + glob.glob("../databatches/sub" + str(sub+1) + "*.pickle")
+        steps_per_ep = len(tr_paths)
+            
+        val_paths = []
+        for sub in folds[fold, 2:6]:
+            val_paths = val_paths + glob.glob("../databatches/sub" + str(sub+1) + "*.pickle")
+        val_steps = len(val_paths)
+            
+        test_paths = []
+        for sub in folds[fold, 0:2]:
+            test_paths = test_paths + glob.glob("../databatches/sub" + str(sub+1) + "*.pickle")
     
-        # Get sample weights for the current training set
-        sample_weights_tr = class_weight.compute_sample_weight('balanced', targets_train, indices=None)
-        
-        # Get sample weights for the validation set
-        sample_weights_val = class_weight.compute_sample_weight('balanced', targets_val, indices=None)
         
         # Call testing history callback
-        test_history = TestOnBest((inputs_test, targets_test))
+        test_history = TestOnBest(test_paths)
         # Run training
-        history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, sample_weight=sample_weights_tr,
-        validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
+        #history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, sample_weight=sample_weights_tr,
+        #validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
+        
+        history = model.fit_generator(generator=data_gen(tr_paths), steps_per_epoch=steps_per_ep, epochs=3, verbose=2, callbacks=[test_history], 
+                                      validation_data=data_gen(val_paths), validation_steps=val_steps, shuffle=False)
         
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)

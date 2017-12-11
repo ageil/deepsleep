@@ -44,7 +44,7 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
 folds = folds-1
 
 # Get fold range from terminal
-fmin = int(sys.argv[1]) 
+#min = int(sys.argv[1]) 
 fmax = int(sys.argv[2]) 
 
 # Number of output classes
@@ -74,15 +74,15 @@ def build_model(init_seed=None):
     # Input layer
     dense_model.add(Flatten(input_shape=base_model.output_shape[1:]))
     # FC6
-    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
+    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed), kernel_regularizer=regularizers.l2(0.01)))
     # FC6 Dropout
     dense_model.add(Dropout(rate=0.5))
     # FC7
-    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
+    dense_model.add(Dense(num_dense, activation='relu', kernel_initializer=initializers.glorot_normal(seed=init_seed), kernel_regularizer=regularizers.l2(0.01)))
     # FC7 Dropout
     dense_model.add(Dropout(rate=0.5))
     # Softmax
-    dense_model.add(Dense(num_classes, activation='softmax', kernel_initializer=initializers.glorot_normal(seed=init_seed)))
+    dense_model.add(Dense(num_classes, activation='softmax', kernel_initializer=initializers.glorot_normal(seed=init_seed), kernel_regularizer=regularizers.l2(0.01)))
 
     # CREATE THE FULL MODEL (stack the dense layers on the convolutional layers)
     model = Sequential()
