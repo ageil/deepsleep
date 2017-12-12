@@ -44,7 +44,7 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
 folds = folds-1
 
 # Get fold range from terminal
-#min = int(sys.argv[1]) 
+fmin = int(sys.argv[1]) 
 fmax = int(sys.argv[2]) 
 
 # Number of output classes
@@ -61,7 +61,7 @@ sensors = 'fpz'
 impath = '../imdata/'
 init_seed = 3
 n_epochs = 50
-batch_size = 75
+batch_size = 128
 
 
 
