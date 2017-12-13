@@ -25,6 +25,7 @@ from skimage import io
 import skimage.transform
 from sklearn.metrics import confusion_matrix
 from sklearn.utils import class_weight
+import random
 
 # test: 0:1 validation: 2:5, train: 6:19
 folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
@@ -323,10 +324,10 @@ if __name__ == '__main__':
         #validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
 
         # data generators
-        tr_gen = data_gen(tr_paths)
-        val_gen = data_gen(val_paths)
+        tr_gen = data_gen(random.sample(tr_paths, len(tr_paths)))
+        val_gen = data_gen(random.sample(val_paths, len(val_paths)))
         
-        history = model.fit_generator(generator=tr_gen, steps_per_epoch=steps_per_ep, epochs=n_epochs, verbose=2, callbacks=[test_history], validation_data=val_gen, validation_steps=val_steps, shuffle=False)
+        history = model.fit_generator(generator=tr_gen, steps_per_epoch=steps_per_ep, epochs=n_epochs, verbose=2, callbacks=[test_history], validation_data=val_gen, validation_steps=val_steps)
         
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
