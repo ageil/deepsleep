@@ -249,8 +249,8 @@ class TestOnBest(Callback):
                 with open(file, 'rb') as f:
                     x, y_batch = pickle.load(f)
                 ypred_batch = self.model.predict_on_batch(x)
-                np.concatenate((y_pred, ypred_batch))
-                np.concatenate((y, y_batch))
+                y_pred = np.concatenate((y_pred, ypred_batch))
+                y = np.concatenate((y, y_batch))
             y_pred = y_pred[1:,:]
             y = y[1:,:]
             
