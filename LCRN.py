@@ -40,10 +40,10 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
 folds = folds-1
 
 class_weights = {0: 1.69217121,
- 1: 2.76249095,
- 2: 0.43409,
- 3: 1.36469326,
- 4: 0.98949553}
+                     1: 2.76249095,
+                     2: 0.43409,
+                     3: 1.36469326,
+                     4: 0.98949553}
 
 # Get fold range from terminal
 fmin = int(sys.argv[1]) 
@@ -64,8 +64,8 @@ impath = '../imdata/'
 # Model name (for output filenames)
 mdname = 'LCRN1'
 init_seed = 3
-n_epochs = 2
-batch_size = 70
+n_epochs = 10
+batch_size = 16
 tsteps = 3
 
 
@@ -176,7 +176,8 @@ def data_gen(paths):
             with open(file, 'rb') as f:
                 x, y = pickle.load(f)
             y_cat = np.argmax(y, axis=1)
-            sample_weights = class_weight.compute_sample_weight(class_weights, y_cat, indices=None)
+            batch_weights = {key: class_weights[key] for key in np.unique(y_cat)}
+            sample_weights = class_weight.compute_sample_weight(batch_weights, y_cat, indices=None)
             yield x, y, sample_weights
 
 def data_gen_test(paths):
@@ -320,9 +321,12 @@ if __name__ == '__main__':
         # Run training
         #history = model.fit(inputs_train, targets_train, epochs=n_epochs, batch_size=batch_size, sample_weight=sample_weights_tr,
         #validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
+
+        # data generators
+        tr_gen = data_gen(tr_paths)
+        val_gen = data_gen(val_paths)
         
-        history = model.fit_generator(generator=data_gen(tr_paths), steps_per_epoch=steps_per_ep, epochs=3, verbose=2, callbacks=[test_history], 
-                                      validation_data=data_gen(val_paths), validation_steps=val_steps, shuffle=False)
+        history = model.fit_generator(generator=tr_gen, steps_per_epoch=steps_per_ep, epochs=n_epochs, verbose=2, callbacks=[test_history], validation_data=val_gen, validation_steps=val_steps, shuffle=False)
         
         # Retreive test set statistics and merge to training statistics log
         history.history.update(test_history.history)
@@ -354,3 +358,4 @@ if __name__ == '__main__':
     
     # Clear session
     K.clear_session()
+ 
