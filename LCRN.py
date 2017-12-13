@@ -173,6 +173,7 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=tsteps, droprate=0.
 
 def data_gen(paths):
     while 1:
+        paths = np.random.shuffle(paths) # shuffle between epochs
         for file in paths:
             with open(file, 'rb') as f:
                 x, y = pickle.load(f)
@@ -247,7 +248,7 @@ class TestOnBest(Callback):
             for file in test_paths:
                 with open(file, 'rb') as f:
                     x, y_batch = pickle.load(f)
-                ypred_batch = self.model.predict_on_batch(self, x)
+                ypred_batch = self.model.predict_on_batch(x)
                 np.column_stack((y_pred, ypred_batch))
                 np.column_stack((y, y_batch))
             y_pred = y_pred[1:]
@@ -324,8 +325,8 @@ if __name__ == '__main__':
         #validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
 
         # data generators
-        tr_gen = data_gen(random.sample(tr_paths, len(tr_paths)))
-        val_gen = data_gen(random.sample(val_paths, len(val_paths)))
+        tr_gen = data_gen(tr_paths, len(tr_paths))
+        val_gen = data_gen(val_paths, len(val_paths))
         
         history = model.fit_generator(generator=tr_gen, steps_per_epoch=steps_per_ep, epochs=n_epochs, verbose=2, callbacks=[test_history], validation_data=val_gen, validation_steps=val_steps)
         
