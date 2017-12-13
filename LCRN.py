@@ -325,8 +325,8 @@ if __name__ == '__main__':
         #validation_data = (inputs_val, targets_val, sample_weights_val), callbacks=[test_history], verbose=2)
 
         # data generators
-        tr_gen = data_gen(tr_paths, len(tr_paths))
-        val_gen = data_gen(val_paths, len(val_paths))
+        tr_gen = data_gen(tr_paths)
+        val_gen = data_gen(val_paths)
         
         history = model.fit_generator(generator=tr_gen, steps_per_epoch=steps_per_ep, epochs=n_epochs, verbose=2, callbacks=[test_history], validation_data=val_gen, validation_steps=val_steps)
         
