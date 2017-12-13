@@ -242,17 +242,17 @@ class TestOnBest(Callback):
             self.best_loss = self.current_loss
             test_paths = self.test_data
 
-            y_pred = np.empty((1,))
-            y = np.empty((1,))
+            y_pred = np.empty((1,num_classes))
+            y = np.empty((1,num_classes))
             # Get predictions
             for file in test_paths:
                 with open(file, 'rb') as f:
                     x, y_batch = pickle.load(f)
                 ypred_batch = self.model.predict_on_batch(x)
-                np.column_stack((y_pred, ypred_batch))
-                np.column_stack((y, y_batch))
-            y_pred = y_pred[1:]
-            y = y[1:]
+                np.concatenate((y_pred, ypred_batch))
+                np.concatenate((y, y_batch))
+            y_pred = y_pred[1:,:]
+            y = y[1:,:]
             
             # probability to hard class assignment
             y_pred = to_categorical(np.argmax(y_pred, axis=1), num_classes=num_classes)
