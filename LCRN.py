@@ -173,7 +173,7 @@ def build_model(init_seed=None, cnn_softmax=False, timesteps=tsteps, droprate=0.
 
 def data_gen(paths):
     while 1:
-        paths = np.random.shuffle(paths) # shuffle between epochs
+        paths = random.sample(paths, len(paths)) # shuffle between epochs
         for file in paths:
             with open(file, 'rb') as f:
                 x, y = pickle.load(f)
