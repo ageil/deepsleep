@@ -1,6 +1,6 @@
 # DeepSleep
 
-This repository contains the contents of the DeepSleep project, developed for the course 02456 Deep Learning at DTU (F2017).
+This is a repository for the DeepSleep project, developed during the course Deep Learning course (02456) at DTU (Fall, 2017).
 
 The repository contains:
 
