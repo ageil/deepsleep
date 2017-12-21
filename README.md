@@ -8,5 +8,5 @@ The repository contains:
 - A [**visualization**](https://github.com/ageil/deepsleep/blob/master/visualization/keras-vis.ipynb) Jupyter Notebook investigating the internals of our models, and showcasing some of the plots used in the presentation and report (bar plots, saliency maps, etc).
 - The raw scripts and data batching procedures used for the actual training sessions.
 
-The contents were carried out and tested on MacOS 10.13.2, using TensorFlow 1.3.0 and Keras 2.0.8. 
+The contents were carried out and tested on MacOS 10.13.2 with Python 3.6.2, using TensorFlow 1.3.0, Keras 2.0.8, Numpy 1.13.3 and Matplotlib 2.0.2. 
 Please note that the visualization notebook in particular does not work with the latest Keras implementation (2.1.2).
