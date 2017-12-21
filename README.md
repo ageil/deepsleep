@@ -4,8 +4,8 @@ This is a repository for the DeepSleep project, developed during the course 0245
 
 The repository contains:
 
-- A [*demo*](https://github.com/ageil/deepsleep/blob/master/demo/CRNN%20DEMO.ipynb) folder with a Jupyter Notebook implementing a minimal working example of 1) our CRNN training loop and 2) a prediction example using our own pretrained weights.
-- A *visualization* Jupyter Notebook investigating the internals of our models, and showcasing some of the plots used in the presentation and report.
+- A [**demo**](https://github.com/ageil/deepsleep/blob/master/demo/CRNN%20DEMO.ipynb) folder with a Jupyter Notebook implementing a minimal working example of 1) our CRNN training loop and 2) a prediction example using our own pretrained weights.
+- A [**visualization**](https://github.com/ageil/deepsleep/blob/master/keras-vis.ipynb) Jupyter Notebook investigating the internals of our models, and showcasing some of the plots used in the presentation and report.
 - The raw scripts and data batching procedures used for the actual training sessions.
 
 The contents were carried out and tested on MacOS 10.13.2, using TensorFlow 1.3.0 and Keras 2.0.8. 
