@@ -44,8 +44,8 @@ folds = np.array([[10,14,1,13,15,19,12,17,5,9,2,4,16,3,11,18,8,20,7,6],
 folds = folds-1
 
 # Get fold range from terminal
-fmin = int(sys.argv[1]) 
-fmax = int(sys.argv[2]) 
+fmin = int(sys.argv[1])
+fmax = int(sys.argv[2])
 
 # Number of output classes
 num_classes = 5
